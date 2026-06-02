@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+langchain
+langchain-openai
+langchain-community
+chromadb
+openai
+yt-dlp
+openai-whisper
+instaloader
+python-dotenv
+youtube-transcript-api
+pytube
+requests
+beautifulsoup4
