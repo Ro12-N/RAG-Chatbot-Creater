@@ -1,26 +1,42 @@
 # FastAPI server - main entry point
 # Contains: /ingest endpoint, /chat endpoint, /health endpoint, CORS config
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables at the very beginning, checking both backend/ and root directories
+load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
+
+# Warn if OpenAI key is missing and set a dummy key to prevent startup crash
+openai_key = os.getenv("OPENAI_API_KEY")
+if not openai_key or openai_key == "your_openai_key_here":
+    print("\n" + "="*80)
+    print("WARNING: OPENAI_API_KEY is not configured in your .env file!")
+    print("The backend server will run, but video analysis and chat functionality will fail.")
+    print("Please set the OPENAI_API_KEY in the .env file in the project root.")
+    print("="*80 + "\n")
+    os.environ["OPENAI_API_KEY"] = "dummy_key_for_startup_validation"
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from dotenv import load_dotenv
 from pydantic import BaseModel
 import asyncio
 import json
 
-# Import your custom modules
+# Import custom modules after environment is loaded and configured
 from ingest import transcribe_youtube, transcribe_instagram
 from embeddings import embed_and_store
 from chain import get_or_create_chain
 
-load_dotenv()
-
 app = FastAPI()
 
 # CORS Middleware
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[frontend_url, "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

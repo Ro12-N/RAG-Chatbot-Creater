@@ -1,11 +1,9 @@
 from langchain_openai import ChatOpenAI
-from langchain.chains import ConversationalRetrievalChain
+from langchain_classic.chains import ConversationalRetrievalChain
 from langchain_openai import OpenAIEmbeddings
-
-from langchain.memory import ConversationBufferMemory
+from langchain_classic.memory import ConversationBufferMemory
 from langchain_community.vectorstores import Chroma
-from langchain_openai import OpenAIEmbeddings
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 

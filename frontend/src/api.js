@@ -1,4 +1,4 @@
-const BASE = "http://localhost:8000";
+const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export async function ingestVideos(youtubeUrl, instagramUrl) {
   const res = await fetch(`${BASE}/ingest`, {
@@ -31,7 +31,9 @@ export async function streamChat(question, sessionId, onToken, onDone, onCitatio
         const parsed = JSON.parse(data);
         if (parsed.type === "token") onToken(parsed.content);
         if (parsed.type === "citations") onCitations(parsed.content);
-      } catch {}
+      } catch (err) {
+        console.warn("Failed to parse stream line:", err);
+      }
     }
   }
 }

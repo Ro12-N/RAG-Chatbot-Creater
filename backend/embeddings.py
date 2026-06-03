@@ -20,24 +20,28 @@ def embed_and_store(video_id: str, transcript: str, metadata: dict):
         chunk_overlap=50,
     )
     chunks = splitter.split_text(transcript)
+    if not chunks:
+        return 0
     
     collection = client.get_or_create_collection("videos")
     
-    for i, chunk in enumerate(chunks):
-        chunk_id = f"{video_id}_chunk_{i}"
-        embedding = embeddings.embed_query(chunk)
-        collection.add(
-            ids=[chunk_id],
-            embeddings=[embedding],
-            documents=[chunk],
-            metadatas=[{
-                "video_id": video_id,
-                "chunk_index": i,
-                "creator": metadata.get("creator", ""),
-                "platform": metadata.get("platform", ""),
-                "title": metadata.get("title", ""),
-            }]
-        )
+    # Batch embed chunks and store them in one go to optimize speed and API costs
+    embeddings_list = embeddings.embed_documents(chunks)
+    ids = [f"{video_id}_chunk_{i}" for i in range(len(chunks))]
+    metadatas = [{
+        "video_id": video_id,
+        "chunk_index": i,
+        "creator": metadata.get("creator", ""),
+        "platform": metadata.get("platform", ""),
+        "title": metadata.get("title", ""),
+    } for i in range(len(chunks))]
+    
+    collection.add(
+        ids=ids,
+        embeddings=embeddings_list,
+        documents=chunks,
+        metadatas=metadatas
+    )
     
     return len(chunks)
 
