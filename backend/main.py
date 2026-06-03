@@ -38,12 +38,12 @@ class ChatRequest(BaseModel):
     question: str
     session_id: str
 
-# ========== Health Check ==========
+#  Health Check
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-# ========== Ingest Endpoint ==========
+# Ingest Endpoint 
 @app.post("/ingest")
 async def ingest_videos(req: IngestRequest):
     # Process YouTube
@@ -62,7 +62,7 @@ async def ingest_videos(req: IngestRequest):
         "message": "Both videos processed and indexed"
     }
 
-# ========== Chat Endpoint (Streaming) ==========
+# Chat Endpoint (Streaming) 
 @app.post("/chat")
 async def chat(req: ChatRequest):
     chain = get_or_create_chain(req.session_id)
@@ -108,7 +108,7 @@ User question: {req.question}"""
     
     return StreamingResponse(generate(), media_type="text/event-stream")
 
-# ========== Get Videos Endpoint ==========
+# Get Videos Endpoint 
 @app.get("/videos")
 def get_videos():
     return video_store
