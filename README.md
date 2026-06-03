@@ -42,6 +42,14 @@ A premium, full-stack Retrieval-Augmented Generation (RAG) chatbot and analytics
        │   - Whisper (Audio)    │    │  - Gemini Embeddings   │
        └────────────────────────┘    └────────────────────────┘
 
+
+<img width="1237" height="951" alt="Screenshot 2026-06-03 204216" src="https://github.com/user-attachments/assets/1ce91fff-e198-40bf-98e6-f8e05fbc203d" />
+<img width="1134" height="946" alt="Screenshot 2026-06-03 204233" src="https://github.com/user-attachments/assets/4de31c56-959e-45fc-9cb2-a1e1c85a62c8" />
+<img width="1458" height="770" alt="Screenshot 2026-06-03 204256" src="https://github.com/user-attachments/assets/ad3f0329-c028-479c-89bb-3781ff909b5f" />
+<img width="1141" height="949" alt="Screenshot 2026-06-03 204333" src="https://github.com/user-attachments/assets/d3ebc9b4-820e-4f26-a293-44f64be6e350" />
+
+
+
 ## 🚀 Running the Project
 
 ### 1. Start the Backend
