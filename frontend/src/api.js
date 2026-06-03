@@ -1,4 +1,4 @@
-const BASE = "https://rag-chatbot-api.onrender.com";
+const BASE = import.meta.env.VITE_API_BASE_URL || "https://rag-chatbot-api.onrender.com";
 
 export async function ingestVideos(youtubeUrl, instagramUrl) {
   const res = await fetch(`${BASE}/ingest`, {

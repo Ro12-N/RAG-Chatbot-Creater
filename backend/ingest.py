@@ -1,14 +1,56 @@
 # Video ingestion - transcript + metadata extraction
 # Will contain: YouTube transcript, Instagram Reel processing 
-import whisper
 import yt_dlp
 import os
+import re
+from youtube_transcript_api import YouTubeTranscriptApi
 from metadata import get_youtube_metadata
 
-model = whisper.load_model("base")
+_whisper_model = None
+
+def get_whisper_model():
+    """Lazy load Whisper model to save startup memory. Uses 'tiny' for 512MB RAM limits."""
+    global _whisper_model
+    if _whisper_model is None:
+        import whisper
+        print("Loading Whisper 'tiny' model (optimized for low memory)...")
+        _whisper_model = whisper.load_model("tiny")
+    return _whisper_model
+
+def extract_youtube_video_id(url: str) -> str or None:
+    """Extract 11-character video ID from various YouTube URL formats."""
+    patterns = [
+        r'(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/embed\/|\/v\/|watch\?v=|&v=)([^#\&\?]{11})',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+def get_youtube_transcript(video_id: str) -> str or None:
+    """Fetch transcripts directly from YouTube API without downloading/transcribing."""
+    try:
+        srt = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript = " ".join([entry['text'] for entry in srt])
+        return transcript
+    except Exception as e:
+        print(f"Could not retrieve YouTube transcript for video {video_id}: {e}")
+        return None
 
 def transcribe_youtube(url: str) -> dict:
     meta = get_youtube_metadata(url)
+    
+    # Try fetching transcript directly first (super fast, uses ~0 RAM)
+    video_id = extract_youtube_video_id(url)
+    if video_id:
+        print(f"Attempting to fetch pre-existing transcript for video ID: {video_id}")
+        transcript = get_youtube_transcript(video_id)
+        if transcript:
+            print("Successfully retrieved transcript directly from YouTube API.")
+            return {"transcript": transcript, "metadata": meta}
+            
+    print("Direct transcript API failed. Falling back to Whisper transcription...")
     
     # Download audio only
     ydl_opts = {
@@ -23,7 +65,8 @@ def transcribe_youtube(url: str) -> dict:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
     
-    # Transcribe
+    # Transcribe with lazy-loaded tiny model
+    model = get_whisper_model()
     result = model.transcribe("yt_audio.mp3")
     transcript = result["text"]
     
@@ -87,6 +130,7 @@ def transcribe_instagram(url: str) -> dict:
     
     transcript = ""
     if video_file and os.path.exists(video_file):
+        model = get_whisper_model()
         result = model.transcribe(video_file)
         transcript = result["text"]
     
