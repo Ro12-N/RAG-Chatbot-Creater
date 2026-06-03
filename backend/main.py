@@ -1,130 +1,111 @@
-# FastAPI server - main entry point
-# Contains: /ingest endpoint, /chat endpoint, /health endpoint, CORS config
 import os
-from pathlib import Path
-from dotenv import load_dotenv
-
-# Load environment variables at the very beginning, checking both backend/ and root directories
-load_dotenv()
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
-
-# Warn if OpenAI key is missing and set a dummy key to prevent startup crash
-openai_key = os.getenv("OPENAI_API_KEY")
-if not openai_key or openai_key == "your_openai_key_here":
-    print("\n" + "="*80)
-    print("WARNING: OPENAI_API_KEY is not configured in your .env file!")
-    print("The backend server will run, but video analysis and chat functionality will fail.")
-    print("Please set the OPENAI_API_KEY in the .env file in the project root.")
-    print("="*80 + "\n")
-    os.environ["OPENAI_API_KEY"] = "dummy_key_for_startup_validation"
-
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import asyncio
-import json
+from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
 
-# Import custom modules after environment is loaded and configured
-from ingest import transcribe_youtube, transcribe_instagram
-from embeddings import embed_and_store
-from chain import get_or_create_chain
+# Load local environment variables
+load_dotenv()
 
-app = FastAPI()
+from services.extractor import extract_video_data
+from services.vector_store import save_transcript_to_vector_db, clear_vector_store
+from services.rag_chain import generate_rag_response_stream
 
-# CORS Middleware
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+app = FastAPI(title="Creator RAG Backend", description="FastAPI Backend for Creator Insights RAG Chatbot")
+
+# Enable CORS for frontend requests (Next.js runs on 3000, 3001, etc.)
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url, "http://localhost:5173"],
+    allow_origins=[
+        frontend_url,
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://rag-chatbot-creater.onrender.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Store metadata for the two videos in memory
-video_store = {}
-
-# ========== Request Models ==========
 class IngestRequest(BaseModel):
-    youtube_url: str
-    instagram_url: str
+    url_a: str
+    url_b: str
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
 
 class ChatRequest(BaseModel):
     question: str
-    session_id: str
+    history: List[ChatMessage]
+    metadata_a: Dict[str, Any]
+    metadata_b: Dict[str, Any]
 
-#  Health Check
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "message": "Creator RAG service is running."}
 
-# Ingest Endpoint 
-@app.post("/ingest")
+@app.post("/api/ingest")
 async def ingest_videos(req: IngestRequest):
-    # Process YouTube
-    yt_data = transcribe_youtube(req.youtube_url)
-    chunks_a = embed_and_store("A", yt_data["transcript"], yt_data["metadata"])
-    video_store["A"] = {**yt_data["metadata"], "chunk_count": chunks_a}
+    print(f"[API] Ingest request received. URL A: {req.url_a}, URL B: {req.url_b}")
     
-    # Process Instagram
-    ig_data = transcribe_instagram(req.instagram_url)
-    chunks_b = embed_and_store("B", ig_data["transcript"], ig_data["metadata"])
-    video_store["B"] = {**ig_data["metadata"], "chunk_count": chunks_b}
-    
-    return {
-        "video_a": video_store["A"],
-        "video_b": video_store["B"],
-        "message": "Both videos processed and indexed"
+    # 1. Clear previous comparison data in vector store to avoid bleed
+    try:
+        clear_vector_store()
+    except Exception as e:
+        print(f"[API] Warning during vector store clear: {str(e)}")
+        
+    # 2. Extract Video A data
+    try:
+        data_a = extract_video_data(req.url_a, "A")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to process Video A: {str(e)}")
+        
+    # 3. Extract Video B data
+    try:
+        data_b = extract_video_data(req.url_b, "B")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to process Video B: {str(e)}")
+
+    # 4. Save transcripts to Vector DB
+    try:
+        save_transcript_to_vector_db(data_a)
+        save_transcript_to_vector_db(data_b)
+    except Exception as e:
+        print(f"[API] Error saving to vector DB: {str(e)}")
+        # Continue and return metadata even if DB save fails, to prevent entire flow crash.
+        
+    # Return processed details (without transcript to keep payload light)
+    response_data = {
+        "video_a": {k: v for k, v in data_a.items() if k != "transcript"},
+        "video_b": {k: v for k, v in data_b.items() if k != "transcript"}
     }
-
-# Chat Endpoint (Streaming) 
-@app.post("/chat")
-async def chat(req: ChatRequest):
-    chain = get_or_create_chain(req.session_id)
     
-    async def generate():
-        # Add metadata context to question
-        meta_context = ""
-        if "A" in video_store and "B" in video_store:
-            meta_context = f"""
-Video A: {video_store['A']['title']} by {video_store['A']['creator']}
-Views: {video_store['A']['views']}, Likes: {video_store['A']['likes']}, 
-Engagement Rate: {video_store['A']['engagement_rate']}%
+    return response_data
 
-Video B: {video_store['B']['title']} by {video_store['B']['creator']}
-Views: {video_store['B']['views']}, Likes: {video_store['B']['likes']},
-Engagement Rate: {video_store['B']['engagement_rate']}%
-
-User question: {req.question}"""
-        else:
-            meta_context = req.question
-        
-        result = chain({"question": meta_context})
-        answer = result["answer"]
-        sources = result.get("source_documents", [])
-        
-        # Stream the answer word by word
-        words = answer.split(" ")
-        for word in words:
-            yield f"data: {json.dumps({'type': 'token', 'content': word + ' '})}\n\n"
-            await asyncio.sleep(0.02)
-        
-        # Send citations
-        citations = []
-        for doc in sources:
-            citations.append({
-                "video_id": doc.metadata.get("video_id", ""),
-                "chunk_index": doc.metadata.get("chunk_index", 0),
-                "text_preview": doc.page_content[:100],
-            })
-        
-        yield f"data: {json.dumps({'type': 'citations', 'content': citations})}\n\n"
-        yield "data: [DONE]\n\n"
+@app.post("/api/chat")
+async def chat_stream(req: ChatRequest):
+    print(f"[API] Chat request received: {req.question}")
     
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    # Parse history back to list of dicts
+    history_dicts = [{"role": msg.role, "content": msg.content} for msg in req.history]
+    
+    # We return an SSE stream (text/event-stream)
+    return StreamingResponse(
+        generate_rag_response_stream(
+            question=req.question,
+            history=history_dicts,
+            metadata_a=req.metadata_a,
+            metadata_b=req.metadata_b
+        ),
+        media_type="text/event-stream"
+    )
 
-# Get Videos Endpoint 
-@app.get("/videos")
-def get_videos():
-    return video_store
+if __name__ == "__main__":
+    import uvicorn
+    # Read port from env or default to 8000
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
