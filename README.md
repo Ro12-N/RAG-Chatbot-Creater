@@ -18,6 +18,30 @@ A premium, full-stack Retrieval-Augmented Generation (RAG) chatbot and analytics
 
 ---
 
+                    ┌──────────────────────────────┐
+                    │      NEXT.JS FRONTEND        │
+                    │   React client + Tailwind    │
+                    │   Port: 3000 (Vercel)        │
+                    └──────────────┬───────────────┘
+                                   │
+                                   │ HTTPS Requests /
+                                   │ SSE (Server-Sent Events) Streaming
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │      FASTAPI BACKEND         │
+                    │   Uvicorn (Render/Railway)   │
+                    │   Port: 8000                 │
+                    └──────────────┬───────────────┘
+                                   │
+                    ┌──────────────┴──────────────┐
+                    ▼                             ▼
+       ┌────────────────────────┐    ┌────────────────────────┐
+       │   EXTRACTOR SERVICE    │    │  VECTOR STORE SERVICE  │
+       │   - yt-dlp Metadata    │    │  - ChromaDB (Local)    │
+       │   - Whisper (Audio)    │    │  - Gemini Embeddings   │
+       └────────────────────────┘    └────────────────────────┘
+
 ## 🚀 Running the Project
 
 ### 1. Start the Backend
